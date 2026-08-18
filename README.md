@@ -29,53 +29,41 @@ FastAPI 主服务 (8000)  ── LangGraph Supervisor ──┬─ qa 节点（R
 用户提问从进入系统到返回回答的完整链路：
 
 ```mermaid
-sequenceDiagram
-    autonumber
-    actor U as 用户
-    participant FE as 前端 Vue 5173
-    participant API as FastAPI 8000 /agent/chat
-    participant SP as LangGraph 监督路由
-    participant LLM as DeepSeek LLM
-    participant RAG as 检索服务 retrieval
-    participant EMB as Embedding 8001
-    participant QD as Qdrant 6333
-    participant ES as ES+IK 9200
-    participant RK as Reranker 8002
-    participant DB as MySQL 3306
+flowchart TD
+    U["用户"] --> FE["前端 Vue (5173)"]
+    FE -- "POST /agent/chat" --> API["FastAPI 主服务 (8000)"]
+    API --> SP["LangGraph 监督路由<br/>planner：LLM 意图识别"]
 
-    U->>FE: 输入问题
-    FE->>API: POST /agent/chat
-    API->>SP: supervisor.run(question, session_id, user_id)
-    SP->>SP: 读取会话历史（内存 10轮 / 180s）
-    SP->>LLM: planner 调用路由工具
+    SP -- "qa" --> QA["qa 节点 · RAG 问答"]
+    SP -- "order" --> OD["order 节点 · 订单查询"]
+    SP -- "general" --> GN["general 节点 · 通用闲聊"]
 
-    alt 路由 qa（商品 / 政策 / FAQ）
-        SP->>RAG: qa_agent.run(question)
-        RAG->>EMB: 问题向量化
-        EMB-->>RAG: 512 维向量
-        par 混合召回
-            RAG->>QD: 向量检索 top20
-            RAG->>ES: 关键词检索 top10
-        end
-        RAG->>RK: RRF 融合 + 精排 top5
-        RK-->>RAG: 重排片段
-        RAG->>LLM: 参考资料 + 问题
-        LLM-->>RAG: 回答
-        RAG-->>SP: 回答 + 引用来源
-    else 路由 order（订单 / 物流，需登录）
-        SP->>DB: get_orders / get_order_by_number
-        DB-->>SP: 订单数据
-        SP->>LLM: 组织回答
-        LLM-->>SP: 回答
-    else 路由 general（闲聊）
-        SP->>LLM: 直接回答
-        LLM-->>SP: 回答
-    end
+    QA --> EMB["Embedding 服务 (8001)<br/>bge-small-zh-v1.5"]
+    QA --> ES["Elasticsearch (9200)<br/>IK 关键词检索"]
+    EMB --> QD["Qdrant (6333)<br/>向量检索"]
+    QD --> F["RRF 融合"]
+    ES --> F
+    F --> RK["Reranker 服务 (8002)<br/>bge-reranker-base 精排"]
+    RK --> CTX["参考资料上下文"]
+    CTX --> LLM["DeepSeek LLM<br/>生成回答"]
 
-    SP->>SP: 保存本轮对话到记忆
-    SP-->>API: AgentResponse(agent, answer, sources)
-    API-->>FE: JSON
-    FE-->>U: 气泡展示回答 + 引用凭证
+    OD --> DB["MySQL (3306)<br/>用户 / 订单"]
+    DB --> LLM
+    GN --> LLM
+
+    LLM --> OUT["回答 + 引用来源"]
+    OUT --> FE
+
+    classDef u fill:#e8f5e9,stroke:#2e7d32,color:#1b5e20;
+    classDef api fill:#e3f2fd,stroke:#1565c0,color:#0d47a1;
+    classDef ag fill:#fff3e0,stroke:#ef6c00,color:#e65100;
+    classDef rg fill:#fce4ec,stroke:#c62828,color:#b71c1c;
+    classDef llm fill:#f3e5f5,stroke:#6a1b9a,color:#4a148c;
+    class U,FE u;
+    class API,DB,OUT api;
+    class SP,QA,OD,GN ag;
+    class EMB,ES,QD,F,RK,CTX rg;
+    class LLM llm;
 ```
 
 监督路由的决策分支：
