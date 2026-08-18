@@ -1,0 +1,31 @@
+# 密钥与本地配置
+.env
+.env.*
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.ruff_cache/
+.venv/
+venv/
+
+# 日志
+logs/
+
+# 前端
+frontend/node_modules/
+frontend/dist/
+
+# IDE
+.idea/
+.vscode/
+
+# 模型与数据（体积大，从 HuggingFace 下载，不提交）
+docker/embedding/
+docker/reranker/
+docker/es/plugin/*.zip
+
+# 系统文件
+Thumbs.db
+.DS_Store

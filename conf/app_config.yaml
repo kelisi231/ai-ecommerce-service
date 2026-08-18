@@ -1,0 +1,33 @@
+mysql:
+  host: 127.0.0.1
+  port: 3306
+  user: root
+  password: root
+  database: ai_cs
+
+es:
+  hosts:
+    - http://localhost:9200
+  index_name: data_agent
+
+qdrant:
+  host: localhost
+  port: 6333
+  embedding_size: 512
+  collection_name: data_agent
+
+embedding:
+  model: bge-small-zh-v1.5
+  url: http://127.0.0.1:8001
+
+
+reranker:
+  model: bge-reranker-base
+  url: http://127.0.0.1:8002
+
+
+
+log:
+  console_level: DEBUG
+  file_level: INFO
+  retention_days: 7
