@@ -24,6 +24,75 @@ FastAPI 主服务 (8000)  ── LangGraph Supervisor ──┬─ qa 节点（R
 
 检索链路：Qdrant 向量召回 + ES 关键词召回 → RRF 融合 → BGE-Reranker 精排 → 作为上下文交给 LLM（DeepSeek API）。
 
+## 运行流程
+
+用户提问从进入系统到返回回答的完整链路：
+
+```mermaid
+sequenceDiagram
+    autonumber
+    actor U as 用户
+    participant FE as 前端 Vue 5173
+    participant API as FastAPI 8000 /agent/chat
+    participant SP as LangGraph 监督路由
+    participant LLM as DeepSeek LLM
+    participant RAG as 检索服务 retrieval
+    participant EMB as Embedding 8001
+    participant QD as Qdrant 6333
+    participant ES as ES+IK 9200
+    participant RK as Reranker 8002
+    participant DB as MySQL 3306
+
+    U->>FE: 输入问题
+    FE->>API: POST /agent/chat
+    API->>SP: supervisor.run(question, session_id, user_id)
+    SP->>SP: 读取会话历史（内存 10轮 / 180s）
+    SP->>LLM: planner 调用路由工具
+
+    alt 路由 qa（商品 / 政策 / FAQ）
+        SP->>RAG: qa_agent.run(question)
+        RAG->>EMB: 问题向量化
+        EMB-->>RAG: 512 维向量
+        par 混合召回
+            RAG->>QD: 向量检索 top20
+            RAG->>ES: 关键词检索 top10
+        end
+        RAG->>RK: RRF 融合 + 精排 top5
+        RK-->>RAG: 重排片段
+        RAG->>LLM: 参考资料 + 问题
+        LLM-->>RAG: 回答
+        RAG-->>SP: 回答 + 引用来源
+    else 路由 order（订单 / 物流，需登录）
+        SP->>DB: get_orders / get_order_by_number
+        DB-->>SP: 订单数据
+        SP->>LLM: 组织回答
+        LLM-->>SP: 回答
+    else 路由 general（闲聊）
+        SP->>LLM: 直接回答
+        LLM-->>SP: 回答
+    end
+
+    SP->>SP: 保存本轮对话到记忆
+    SP-->>API: AgentResponse(agent, answer, sources)
+    API-->>FE: JSON
+    FE-->>U: 气泡展示回答 + 引用凭证
+```
+
+监督路由的决策分支：
+
+```mermaid
+flowchart TD
+    Q["用户提问"] --> PL["planner 节点<br/>LLM 意图识别 + 关键词兜底"]
+    PL -->|route=qa| QA["qa 节点<br/>RAG 知识库问答"]
+    PL -->|route=order| OD["order 节点<br/>订单查询（需登录）"]
+    PL -->|route=general| GN["general 节点<br/>通用闲聊"]
+    QA --> OUT["返回 answer + sources"]
+    OD --> OUT
+    GN --> OUT
+```
+
+> Mermaid 图在 GitHub 上可直接渲染；本地编辑器若未启用 Mermaid 插件，可在 https://mermaid.live 粘贴预览。
+
 ## 目录结构
 
 ```
